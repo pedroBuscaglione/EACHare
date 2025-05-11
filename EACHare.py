@@ -1,88 +1,67 @@
-import socket
 import sys
-import threading
+import os
 
+# Classe Peer para representar os vizinhos conhecidos
 class Peer:
-    def __init__(self, address, port, vizinhos, shared_dir):
-        self.address = address
-        self.port = int(port)
-        self.peers = {}  # Dicionário para armazenar os peers conhecidos e seu status (ONLINE/OFFLINE)
-        self.clock = 0  # Relógio lógico
-        self.shared_dir = shared_dir
-        self.load_peers(vizinhos_arquivo)
-    
-    def load_peers(self, file_path):
-        """Carrega a lista de peers conhecidos do arquivo."""
-        try:
-            with open(file_path, 'r') as f:
-                for line in f:
-                    peer = line.strip()
-                    if peer:
-                        ip, port = peer.split(":")
-                        self.peers[(ip, int(port))] = "OFFLINE"
-                        print(f"Adicionando peer {ip}:{port} com status OFFLINE")
-        except FileNotFoundError:
-            print("Erro: Arquivo de vizinhos não encontrado.")
-            sys.exit(1)
-    
-    def update_clock(self):
-        """Incrementa o relógio lógico e exibe a atualização."""
-        self.clock += 1
-        print(f"=> Atualizando relógio para {self.clock}")
-    
-    def handle_client(self, conn, addr):
-        """Lida com um cliente conectado."""
-        with conn:
-            message = conn.recv(1024).decode()
-            print(f"Mensagem recebida de {addr}: \"{message}\"")
-            self.update_clock()
-    
-    def start_server(self):
-        """Inicia o servidor TCP em uma thread separada."""
-        try:
-            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server_socket.bind((self.address, self.port))
-            server_socket.listen()
-            print(f"Peer iniciado em {self.address}:{self.port}, ouvindo conexões...\n")
-            
-            while True:
-                conn, addr = server_socket.accept()
-                threading.Thread(target=self.handle_client, args=(conn, addr)).start()
-        except Exception as e:
-            print(f"Erro ao iniciar o servidor: {e}")
-            sys.exit(1)
-    
-    def send_message(self, peer_address, message):
-        """Envia uma mensagem para um peer específico."""
-        try:
-            ip, port = peer_address
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.connect((ip, port))
-                s.sendall(message.encode())
-            print(f"Mensagem enviada para {ip}:{port}: \"{message}\"")
-            self.update_clock()
-        except Exception as e:
-            print(f"Erro ao enviar mensagem para {peer_address}: {e}")
+    def __init__(self, endereco, porta):
+        self.endereco = endereco  # Endereço do peer
+        self.porta = porta        # Porta do peer
+        self.estado = "OFFLINE"   # Estado inicial do peer
 
-if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("Uso: python peer.py <endereco>:<porta> <vizinhos_arquivo> <shared_dir>")
+    def atualizar_estado(self, novo_estado):
+        """Atualiza o estado do peer (ONLINE ou OFFLINE)"""
+        self.estado = novo_estado
+        print(f"Atualizando peer {self.endereco}:{self.porta} status {novo_estado}")
+
+def inicializar_programa():
+    # Verifica se os argumentos foram fornecidos corretamente
+    if len(sys.argv) != 4:  # Espera-se 3 argumentos além do nome do script
+        print("Uso: python <nome_do_arquivo>.py <endereco>:<porta> <vizinhos.txt> <diretorio_compartilhado>")
+        sys.exit(1)  # Encerra o programa se os argumentos estiverem incorretos
+
+    # Lê os argumentos da linha de comando
+    endereco_porta = sys.argv[1]  # Primeiro argumento: endereço e porta do peer
+    arquivo_vizinhos = sys.argv[2]  # Segundo argumento: nome do arquivo de vizinhos
+    diretorio_compartilhado = sys.argv[3]  # Terceiro argumento: diretório de arquivos compartilhados
+
+    # Valida o formato do endereço:porta
+    if ":" not in endereco_porta or not endereco_porta.split(":")[1].isdigit():
+        print("Erro: Formato inválido de endereço:porta. Deve ser no formato <endereco>:<porta>.")  # Mensagem de erro
         sys.exit(1)
-    
-    endereco, porta = sys.argv[1].split(":")
-    vizinhos_arquivo = sys.argv[2]
-    shared_dir = sys.argv[3]
-    
-    # Criando e iniciando um peer
-    peer = Peer(endereco, porta, "vizinhos.txt", shared_dir)
-    threading.Thread(target=peer.start_server, daemon=True).start()
-    
-    while True:
-        comando = input("Digite um comando (msg <ip>:<porta> <mensagem> ou sair): ")
-        if comando.lower() == "sair":
-            print("Encerrando peer...")
-            sys.exit(0)
-        elif comando.startswith("msg "):
-            _, peer_info, mensagem = comando.split(" ", 2)
-            ip, port = peer_info.split(":")
-            peer.send_message((ip, int(port)), mensagem)
+
+    # Verifica se o arquivo de vizinhos existe no sistema
+    if not os.path.isfile(arquivo_vizinhos):
+        print(f"Erro: Arquivo de vizinhos '{arquivo_vizinhos}' não encontrado.")  # Mensagem de erro
+        sys.exit(1)
+
+    # Verifica se o diretório compartilhado existe e é válido
+    if not os.path.isdir(diretorio_compartilhado):
+        print(f"Erro: Diretório compartilhado '{diretorio_compartilhado}' não encontrado ou inválido.")  # Mensagem de erro
+        sys.exit(1)
+
+    # Confirma que todos os parâmetros foram lidos com sucesso
+    print("Parâmetros de inicialização lidos com sucesso!")
+    print(f"Endereço e Porta: {endereco_porta}")
+    print(f"Arquivo de Vizinhos: {arquivo_vizinhos}")
+    print(f"Diretório Compartilhado: {diretorio_compartilhado}")
+
+    # Lê o arquivo de vizinhos e inicializa a lista de peers
+    lista_vizinhos = []  # Lista que armazenará os vizinhos conhecidos
+    with open(arquivo_vizinhos, "r") as arquivo:
+        for linha in arquivo:  # Itera por cada linha do arquivo
+            linha = linha.strip()  # Remove espaços e quebras de linha
+            if linha:  # Ignora linhas vazias
+                endereco_peer, porta_peer = linha.split(":")  # Separa endereço e porta
+                peer = Peer(endereco_peer, int(porta_peer))  # Cria instância da classe Peer
+                lista_vizinhos.append(peer)  # Adiciona o peer à lista
+                print(f"Adicionando novo peer {linha} status {peer.estado}")  # Log de adição do peer
+
+    # Confirma que a lista de peers foi inicializada
+    print("Lista de peers inicializada com sucesso!")
+
+    return endereco_porta, lista_vizinhos, diretorio_compartilhado
+
+# Inicia o programa
+if __name__ == "__main__":
+    # Chama a função de inicialização e armazena os valores retornados
+    endereco_porta, lista_vizinhos, diretorio_compartilhado = inicializar_programa()
